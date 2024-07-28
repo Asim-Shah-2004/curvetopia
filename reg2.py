@@ -44,9 +44,12 @@ class FitCurves:
 
             return [points[0], points[0] + alpha_l * (points[1] - points[0]), points[-1] + alpha_r * (points[-2] - points[-1]), points[-1]]
 
-        def fit_cubic(points, u, t1, t2, error):
-            def bezier_point(t, bezier):
-                return (1 - t) ** 3 * bezier[0] + 3 * (1 - t) ** 2 * t * bezier[1] + 3 * (1 - t) * t ** 2 * bezier[2] + t ** 3 * bezier[3]
+        def bezier_point(t, bezier):
+            return (1 - t) ** 3 * bezier[0] + 3 * (1 - t) ** 2 * t * bezier[1] + 3 * (1 - t) * t ** 2 * bezier[2] + t ** 3 * bezier[3]
+
+        def fit_cubic(points, u, t1, t2, error, depth=0, max_depth=10):
+            if depth > max_depth:
+                return []
 
             bezier = generate_bezier(points, u)
             max_dist, split_point = max((np.linalg.norm(p - bezier_point(t, bezier)), i) for i, (p, t) in enumerate(zip(points, u)))
@@ -54,7 +57,7 @@ class FitCurves:
                 return [bezier]
             left_u = u[:split_point + 1]
             right_u = [v - u[split_point] for v in u[split_point:]]
-            return fit_cubic(points[:split_point + 1], left_u, t1, np.array([0, 0]), error) + fit_cubic(points[split_point:], right_u, np.array([0, 0]), t2, error)
+            return fit_cubic(points[:split_point + 1], left_u, t1, np.array([0, 0]), error, depth+1) + fit_cubic(points[split_point:], right_u, np.array([0, 0]), t2, depth+1)
 
         points = np.array(points)
         u = chord_length_parameterize(points)

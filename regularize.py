@@ -207,15 +207,24 @@ class FitCurves:
 
 
 # Example set of points
-points = np.array([
-    [0, 0],
-    [1, 2],
-    [2, 3],
-    [4, 3],
-    [5, 0]
-])
+def read_csv(csv_path):
+    np_path_XYs = np.genfromtxt(csv_path, delimiter=',')
+    path_XYs = []
+    for i in np.unique(np_path_XYs[:, 0]):
+        npXYs = np_path_XYs[np_path_XYs[:, 0] == i][:, 1:]
+        XYs = []
+        for j in np.unique(npXYs[:, 0]):
+            XY = npXYs[npXYs[:, 0] == j][:, 1:]
+            XYs.append(XY)
+        path_XYs.append(XYs)
+    return path_XYs
 
 # Fit curve with specified error tolerance
+
+points = read_csv('problems/isolated.csv')
+points = np.array(points[2][0]) #do 00 10 20 to change shapes
+
+
 error = 0.01
 fit = FitCurves.fit_curve(points, error)
 
