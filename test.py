@@ -24,7 +24,7 @@ def plot(paths_XYs):
     ax.set_aspect('equal')
     plt.show()
 
-path = "problems/frag01_sol.csv"
+path = "problems/frag0.csv"
 
 pathXy = read_csv(path)
 

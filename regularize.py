@@ -1,130 +1,230 @@
 import numpy as np
-import cv2
+from numpy.linalg import norm, solve
+from scipy.optimize import minimize
 import matplotlib.pyplot as plt
 
-# Define functions to read CSV and detect shapes
-def read_csv(csv_path):
-    np_path_XYs = np.genfromtxt(csv_path, delimiter=',')
-    path_XYs = []
-    for i in np.unique(np_path_XYs[:, 0]):
-        npXYs = np_path_XYs[np_path_XYs[:, 0] == i][:, 1:]
-        XYs = []
-        for j in np.unique(npXYs[:, 0]):
-            XY = npXYs[npXYs[:, 0] == j][:, 1:]
-            XYs.append(XY)
-        path_XYs.append(XYs)
-    return path_XYs
+class FitCurves:
+    @staticmethod
+    def fit_curve(points, error):
+        """
+        Fit a Bezier curve to a set of points with a specified error tolerance.
+        """
+        tHat1 = FitCurves._compute_left_tangent(points, 0)
+        tHat2 = FitCurves._compute_right_tangent(points, len(points) - 1)
+        result = []
+        FitCurves._fit_cubic(points, 0, len(points) - 1, tHat1, tHat2, error, result)
+        return result
 
-def is_line(curve, threshold=1e-2):
-    if len(curve) < 2:
-        return False
-    x_coords, y_coords = curve[:, 0], curve[:, 1]
-    line = np.polyfit(x_coords, y_coords, 1)
-    fitted_line = np.polyval(line, x_coords)
-    error = np.sum((fitted_line - y_coords) ** 2)
-    return error < threshold
+    @staticmethod
+    def _fit_cubic(points, first, last, tHat1, tHat2, error, result):
+        """
+        Fit a cubic Bezier curve to a subset of points.
+        """
+        nPts = last - first + 1
+        if nPts == 2:
+            dist = norm(points[first] - points[last]) / 3.0
+            bezCurve = [
+                points[first],
+                points[first] + tHat1 * dist,
+                points[last] + tHat2 * dist,
+                points[last]
+            ]
+            result.extend(bezCurve[1:])
+            return
 
-def is_circle_or_ellipse(curve, threshold=1e-2):
-    if len(curve) < 5:
-        return False, None
-    ellipse = cv2.fitEllipse(curve.astype(np.float32))
-    center, axes, angle = ellipse
-    a, b = axes[0] / 2, axes[1] / 2
-    distances = np.sqrt(((curve[:, 0] - center[0]) ** 2) / a ** 2 + ((curve[:, 1] - center[1]) ** 2) / b ** 2)
-    error = np.std(distances)
-    if error < threshold:
-        if np.isclose(a, b, atol=threshold):
-            return True, "circle"
-        return True, "ellipse"
-    return False, None
+        u = FitCurves._chord_length_parameterize(points, first, last)
+        bezCurve = FitCurves._generate_bezier(points, first, last, u, tHat1, tHat2)
 
-def is_rectangle_or_rounded_rectangle(curve, threshold=1e-2):
-    if len(curve) < 4:
-        return False, None
-    rect = cv2.minAreaRect(curve.astype(np.float32))
-    box = cv2.boxPoints(rect)
-    box = np.int0(box)
-    error = np.sum(np.min(np.linalg.norm(curve[:, np.newaxis] - box[np.newaxis, :], axis=2), axis=1))
-    if error < threshold:
-        return True, "rectangle"
-    return False, None
+        maxError, splitPoint = FitCurves._compute_max_error(points, first, last, bezCurve, u)
+        if maxError < error:
+            result.extend(bezCurve[1:])
+            return
 
-def is_regular_polygon(curve, num_sides, threshold=1e-2):
-    if len(curve) < num_sides:
-        return False
-    angle = 2 * np.pi / num_sides
-    for i in range(num_sides):
-        j = (i + 1) % num_sides
-        edge_vector = curve[j] - curve[i]
-        length = np.linalg.norm(edge_vector)
-        next_edge_vector = curve[(j + 1) % num_sides] - curve[j]
-        next_length = np.linalg.norm(next_edge_vector)
-        if not np.isclose(length, next_length, atol=threshold):
-            return False
-        angle_diff = np.arccos(np.clip(np.dot(edge_vector, next_edge_vector) / (length * next_length), -1, 1))
-        if not np.isclose(angle_diff, angle, atol=threshold):
-            return False
-    return True
+        if maxError < error ** 2:
+            for _ in range(4):
+                uPrime = FitCurves._reparameterize(points, first, last, u, bezCurve)
+                bezCurve = FitCurves._generate_bezier(points, first, last, uPrime, tHat1, tHat2)
+                maxError, splitPoint = FitCurves._compute_max_error(points, first, last, bezCurve, uPrime)
+                if maxError < error:
+                    result.extend(bezCurve[1:])
+                    return
+                u = uPrime
 
-def is_star_shape(curve, threshold=1e-2):
-    hull = cv2.convexHull(curve.astype(np.float32))
-    if len(hull) < 6:
-        return False
-    return True
+        tHatCenter = FitCurves._compute_center_tangent(points, splitPoint)
+        FitCurves._fit_cubic(points, first, splitPoint, tHat1, tHatCenter, error, result)
+        tHatCenter = -tHatCenter
+        FitCurves._fit_cubic(points, splitPoint, last, tHatCenter, tHat2, error, result)
 
-# Define functions to regularize shapes
-def regularize_line(curve):
-    return np.array([curve[0], curve[-1]])
+    @staticmethod
+    def _generate_bezier(points, first, last, uPrime, tHat1, tHat2):
+        """
+        Generate a Bezier curve approximation to a set of points.
+        """
+        nPts = last - first + 1
+        A = np.zeros((nPts, 2, 2))
+        C = np.zeros((2, 2))
+        X = np.zeros((2, 1))
 
-def regularize_circle_or_ellipse(curve, shape_type):
-    ellipse = cv2.fitEllipse(curve.astype(np.float32))
-    center, axes, angle = ellipse
-    if shape_type == "circle":
-        radius = (axes[0] + axes[1]) / 4
-        t = np.linspace(0, 2 * np.pi, 100)
-        x = center[0] + radius * np.cos(t)
-        y = center[1] + radius * np.sin(t)
-    else:
-        a, b = axes[0] / 2, axes[1] / 2
-        t = np.linspace(0, 2 * np.pi, 100)
-        x = center[0] + a * np.cos(t) * np.cos(np.radians(angle)) - b * np.sin(t) * np.sin(np.radians(angle))
-        y = center[1] + a * np.cos(t) * np.sin(np.radians(angle)) + b * np.sin(t) * np.cos(np.radians(angle))
-    return np.vstack((x, y)).T
+        for i in range(nPts):
+            A[i][0] = tHat1 * FitCurves._B1(uPrime[i])
+            A[i][1] = tHat2 * FitCurves._B2(uPrime[i])
 
-def regularize_rectangle_or_rounded_rectangle(curve, shape_type):
-    rect = cv2.minAreaRect(curve.astype(np.float32))
-    box = cv2.boxPoints(rect)
-    return np.int0(box)
+        for i in range(nPts):
+            C[0][0] += np.dot(A[i][0], A[i][0])
+            C[0][1] += np.dot(A[i][0], A[i][1])
+            C[1][0] = C[0][1]
+            C[1][1] += np.dot(A[i][1], A[i][1])
 
-# Define function to classify and plot curves
-def classify_and_plot(curves):
-    plt.figure(figsize=(10, 10))
-    for curve in curves:
-        curve = np.array(curve)  # Ensure curve is a numpy array
-        if is_line(curve):
-            print("Detected: Line")
-            curve = regularize_line(curve)
-        elif is_circle_or_ellipse(curve)[0]:
-            shape_type = "circle" if is_circle_or_ellipse(curve)[1] == "circle" else "ellipse"
-            print(f"Detected: {shape_type.capitalize()}")
-            curve = regularize_circle_or_ellipse(curve, shape_type)
-        elif is_rectangle_or_rounded_rectangle(curve)[0]:
-            shape_type = "rectangle" if is_rectangle_or_rounded_rectangle(curve)[1] == "rectangle" else "rounded rectangle"
-            print(f"Detected: {shape_type.capitalize()}")
-            curve = regularize_rectangle_or_rounded_rectangle(curve, shape_type)
-        elif is_regular_polygon(curve, num_sides=5):
-            print("Detected: Regular Polygon")
-        elif is_star_shape(curve):
-            print("Detected: Star Shape")
+            tmp = points[first + i] - (
+                points[first] * FitCurves._B0(uPrime[i]) +
+                points[first] * FitCurves._B1(uPrime[i]) +
+                points[last] * FitCurves._B2(uPrime[i]) +
+                points[last] * FitCurves._B3(uPrime[i])
+            )
+
+            X[0][0] += np.dot(A[i][0], tmp)
+            X[1][0] += np.dot(A[i][1], tmp)
+
+        det_C0_C1 = C[0][0] * C[1][1] - C[1][0] * C[0][1]
+        if det_C0_C1 == 0:
+            alpha_l, alpha_r = 0, 0
         else:
-            print("Detected: Irregular Shape")
+            det_C0_X = C[0][0] * X[1][0] - C[1][0] * X[0][0]
+            det_X_C1 = X[0][0] * C[1][1] - X[1][0] * C[0][1]
+            alpha_l = det_X_C1 / det_C0_C1
+            alpha_r = det_C0_X / det_C0_C1
 
-        plt.plot(curve[:, 0], curve[:, 1])
+        segLength = norm(points[first] - points[last])
+        epsilon = 1.0e-6 * segLength
+        if alpha_l < epsilon or alpha_r < epsilon:
+            dist = segLength / 3.0
+            bezCurve = [
+                points[first],
+                points[first] + tHat1 * dist,
+                points[last] + tHat2 * dist,
+                points[last]
+            ]
+            return bezCurve
 
-    plt.gca().set_aspect('equal', adjustable='box')
-    plt.show()
+        bezCurve = [
+            points[first],
+            points[first] + tHat1 * alpha_l,
+            points[last] + tHat2 * alpha_r,
+            points[last]
+        ]
+        return bezCurve
 
-# Load and classify curves from CSV
-curves = read_csv('problems/frag0.csv')
-classify_and_plot(curves)
+    @staticmethod
+    def _reparameterize(points, first, last, u, bezCurve):
+        """
+        Reparameterize points and fit the Bezier curve.
+        """
+        uPrime = [FitCurves._newton_raphson_root_find(bezCurve, points[i], u[i - first])
+                  for i in range(first, last + 1)]
+        return uPrime
 
+    @staticmethod
+    def _newton_raphson_root_find(bez, point, u):
+        """
+        Use Newton-Raphson iteration to find a better root.
+        """
+        Q_u = FitCurves._bezier_ii(3, bez, u)
+        Q1 = [3 * (bez[i + 1] - bez[i]) for i in range(3)]
+        Q2 = [2 * (Q1[i + 1] - Q1[i]) for i in range(2)]
+        Q1_u = FitCurves._bezier_ii(2, Q1, u)
+        Q2_u = FitCurves._bezier_ii(1, Q2, u)
+        numerator = np.dot(Q_u - point, Q1_u)
+        denominator = np.dot(Q1_u, Q1_u) + np.dot(Q_u - point, Q2_u)
+        if denominator == 0:
+            return u
+        return u - numerator / denominator
+
+    @staticmethod
+    def _bezier_ii(degree, V, t):
+        """
+        Evaluate a Bezier curve at a particular parameter value.
+        """
+        Vtemp = np.copy(V)
+        for i in range(1, degree + 1):
+            for j in range(degree - i + 1):
+                Vtemp[j] = (1 - t) * Vtemp[j] + t * Vtemp[j + 1]
+        return Vtemp[0]
+
+    @staticmethod
+    def _B0(u):
+        return (1 - u) ** 3
+
+    @staticmethod
+    def _B1(u):
+        return 3 * u * (1 - u) ** 2
+
+    @staticmethod
+    def _B2(u):
+        return 3 * u ** 2 * (1 - u)
+
+    @staticmethod
+    def _B3(u):
+        return u ** 3
+
+    @staticmethod
+    def _compute_left_tangent(points, end):
+        tHat1 = points[end + 1] - points[end]
+        return tHat1 / norm(tHat1)
+
+    @staticmethod
+    def _compute_right_tangent(points, end):
+        tHat2 = points[end - 1] - points[end]
+        return tHat2 / norm(tHat2)
+
+    @staticmethod
+    def _compute_center_tangent(points, center):
+        V1 = points[center - 1] - points[center]
+        V2 = points[center] - points[center + 1]
+        tHatCenter = (V1 + V2) / 2.0
+        return tHatCenter / norm(tHatCenter)
+
+    @staticmethod
+    def _chord_length_parameterize(points, first, last):
+        u = [0.0]
+        for i in range(first + 1, last + 1):
+            u.append(u[-1] + norm(points[i] - points[i - 1]))
+        for i in range(1, len(u)):
+            u[i] /= u[-1]
+        return u
+
+    @staticmethod
+    def _compute_max_error(points, first, last, bezCurve, u):
+        maxDist = 0.0
+        splitPoint = (last - first + 1) // 2
+        for i in range(first + 1, last):
+            P = FitCurves._bezier_ii(3, bezCurve, u[i - first])
+            v = P - points[i]
+            dist = np.dot(v, v)
+            if dist > maxDist:
+                maxDist = dist
+                splitPoint = i
+        return maxDist, splitPoint
+
+
+# Example set of points
+points = np.array([
+    [0, 0],
+    [1, 2],
+    [2, 3],
+    [4, 3],
+    [5, 0]
+])
+
+# Fit curve with specified error tolerance
+error = 0.01
+fit = FitCurves.fit_curve(points, error)
+
+# Plot the original points
+plt.plot(points[:, 0], points[:, 1], 'ro-', label='Original Points')
+
+# Plot the fitted Bezier curve
+fit = np.array(fit).reshape(-1, 2)
+plt.plot(fit[:, 0], fit[:, 1], 'b-', label='Fitted Bezier Curve')
+
+plt.legend()
+plt.show()
