@@ -11,7 +11,7 @@ def rotate_image(image, rotation_angle):
 def is_within_bounds(coords, width, height, margin=0):
     return all(0 + margin <= x < width - margin and 0 + margin <= y < height - margin for x, y in coords)
 
-def add_path_noise(points, noise_level=2):
+def add_path_noise(points, noise_level=1):  # Reduced noise level
     noisy_points = []
     for (x, y) in points:
         noisy_x = x + np.random.uniform(-noise_level, noise_level)
@@ -66,7 +66,7 @@ def save_annotation_file(file_path, class_id, bbox, img_width, img_height):
         x_center, y_center, width, height = bbox
         f.write(f'{class_id} {x_center} {y_center} {width} {height}\n')
 
-def generate_geometric_shapes_dataset(num_samples_per_class=1500, output_directory='../dataset2'):
+def generate_geometric_shapes_dataset(num_samples_per_class=50, output_directory='../dataset2'):
     shape_categories = ['line', 'triangle', 'square', 'circle', 'ellipse', 'rectangle', 'star', 'regular_polygon']
     image_size = 224
     margin = 10
@@ -88,14 +88,14 @@ def generate_geometric_shapes_dataset(num_samples_per_class=1500, output_directo
                     x1, y1 = np.random.randint(0, image_size, size=2)
                     x2, y2 = np.random.randint(0, image_size, size=2)
                     coords = [(x1, y1), (x2, y2)]
-                    draw_wobbly_line(image, coords[0], coords[1], color=255, thickness=2, noise_level=4)
+                    draw_wobbly_line(image, coords[0], coords[1], color=255, thickness=2, noise_level=3)  # Reduced noise level
                     x_min, y_min, x_max, y_max = get_bounding_box(coords)
                     
                 elif shape == 'circle':
                     radius = np.random.randint(20, 60)
                     x, y = np.random.randint(radius, image_size-radius, size=2)
                     coords = [(x, y)]
-                    draw_wobbly_circle(image, coords[0], radius, color=255, thickness=2, noise_level=4)
+                    draw_wobbly_circle(image, coords[0], radius, color=255, thickness=2, noise_level=3)  # Reduced noise level
                     x_min, y_min, x_max, y_max = x - radius, y - radius, x + radius, y + radius
 
                 elif shape == 'ellipse':
@@ -103,7 +103,7 @@ def generate_geometric_shapes_dataset(num_samples_per_class=1500, output_directo
                     axes = np.random.randint(20, 80, size=2)
                     angle = np.random.randint(0, 180)
                     coords = [(x, y)]
-                    draw_wobbly_ellipse(image, coords[0], tuple(axes), angle, color=255, thickness=2, noise_level=4)
+                    draw_wobbly_ellipse(image, coords[0], tuple(axes), angle, color=255, thickness=2, noise_level=3)  # Reduced noise level
                     x_min, y_min, x_max, y_max = x - axes[0], y - axes[1], x + axes[0], y + axes[1]
 
                 elif shape == 'rectangle':
@@ -112,10 +112,10 @@ def generate_geometric_shapes_dataset(num_samples_per_class=1500, output_directo
                     x2, y2 = x1 + width, y1 + height
                     coords = [(x1, y1), (x2, y1), (x2, y2), (x1, y2)]
                     if is_within_bounds(coords, image_size, image_size, margin):
-                        draw_wobbly_line(image, (x1, y1), (x2, y1), color=255, thickness=2, noise_level=4)
-                        draw_wobbly_line(image, (x2, y1), (x2, y2), color=255, thickness=2, noise_level=4)
-                        draw_wobbly_line(image, (x2, y2), (x1, y2), color=255, thickness=2, noise_level=4)
-                        draw_wobbly_line(image, (x1, y2), (x1, y1), color=255, thickness=2, noise_level=4)
+                        draw_wobbly_line(image, (x1, y1), (x2, y1), color=255, thickness=2, noise_level=3)  # Reduced noise level
+                        draw_wobbly_line(image, (x2, y1), (x2, y2), color=255, thickness=2, noise_level=3)  # Reduced noise level
+                        draw_wobbly_line(image, (x2, y2), (x1, y2), color=255, thickness=2, noise_level=3)  # Reduced noise level
+                        draw_wobbly_line(image, (x1, y2), (x1, y1), color=255, thickness=2, noise_level=3)  # Reduced noise level
                         x_min, y_min, x_max, y_max = get_bounding_box(coords)
                     else:
                         continue
@@ -126,10 +126,10 @@ def generate_geometric_shapes_dataset(num_samples_per_class=1500, output_directo
                     x2, y2 = x1 + side_length, y1 + side_length
                     coords = [(x1, y1), (x2, y1), (x2, y2), (x1, y2)]
                     if is_within_bounds(coords, image_size, image_size, margin):
-                        draw_wobbly_line(image, (x1, y1), (x2, y1), color=255, thickness=2, noise_level=4)
-                        draw_wobbly_line(image, (x2, y1), (x2, y2), color=255, thickness=2, noise_level=4)
-                        draw_wobbly_line(image, (x2, y2), (x1, y2), color=255, thickness=2, noise_level=4)
-                        draw_wobbly_line(image, (x1, y2), (x1, y1), color=255, thickness=2, noise_level=4)
+                        draw_wobbly_line(image, (x1, y1), (x2, y1), color=255, thickness=2, noise_level=3)  # Reduced noise level
+                        draw_wobbly_line(image, (x2, y1), (x2, y2), color=255, thickness=2, noise_level=3)  # Reduced noise level
+                        draw_wobbly_line(image, (x2, y2), (x1, y2), color=255, thickness=2, noise_level=3)  # Reduced noise level
+                        draw_wobbly_line(image, (x1, y2), (x1, y1), color=255, thickness=2, noise_level=3)  # Reduced noise level
                         x_min, y_min, x_max, y_max = get_bounding_box(coords)
                     else:
                         continue
@@ -146,7 +146,7 @@ def generate_geometric_shapes_dataset(num_samples_per_class=1500, output_directo
                         points.append((x, y))
                     coords = points
                     if is_within_bounds(coords, image_size, image_size, margin):
-                        noisy_points = add_path_noise(coords, noise_level=4)
+                        noisy_points = add_path_noise(coords, noise_level=2)  # Reduced noise level
                         cv2.polylines(image, [np.array(noisy_points)], isClosed=True, color=255, thickness=2)
                         x_min, y_min, x_max, y_max = get_bounding_box(coords)
                     else:
@@ -166,7 +166,7 @@ def generate_geometric_shapes_dataset(num_samples_per_class=1500, output_directo
                         points.append((x, y))
                     coords = points
                     if is_within_bounds(coords, image_size, image_size, margin):
-                        noisy_points = add_path_noise(coords, noise_level=4)
+                        noisy_points = add_path_noise(coords, noise_level=2)  # Reduced noise level
                         cv2.polylines(image, [np.array(noisy_points)], isClosed=True, color=255, thickness=2)
                         x_min, y_min, x_max, y_max = get_bounding_box(coords)
                     else:
@@ -183,7 +183,7 @@ def generate_geometric_shapes_dataset(num_samples_per_class=1500, output_directo
                         ])) == 0):
                             break
                     if is_within_bounds(coords, image_size, image_size, margin):
-                        noisy_points = add_path_noise(coords, noise_level=4)
+                        noisy_points = add_path_noise(coords, noise_level=2)  # Reduced noise level
                         cv2.polylines(image, [np.array(noisy_points)], isClosed=True, color=255, thickness=2)
                         x_min, y_min, x_max, y_max = get_bounding_box(coords)
                     else:

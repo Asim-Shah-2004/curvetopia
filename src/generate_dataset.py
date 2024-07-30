@@ -48,7 +48,7 @@ def draw_wobbly_ellipse(img, center, axes, angle, color, thickness, noise_level)
     wobbly_ellipse_points = add_path_noise(ellipse_points, noise_level)
     cv2.polylines(img, [np.array(wobbly_ellipse_points, np.int32)], isClosed=True, color=color, thickness=thickness)
 
-def generate_geometric_shapes_dataset(num_samples_per_class=1500, output_directory='../dataset'):
+def generate_geometric_shapes_dataset(num_samples_per_class=50, output_directory='../dataset'):
     shape_categories = ['line', 'triangle', 'square', 'circle', 'ellipse', 'rectangle', 'star', 'regular_polygon']
     image_size = 224
     margin = 10

@@ -172,3 +172,5 @@ notebooks/data.yaml
 dataset2/
 *.svg
 *.png
+src/results/
+model/
