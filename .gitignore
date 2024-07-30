@@ -167,6 +167,8 @@ problems.zip
 Curvetopia.pdf
 dataset/
 output/
-
+notebooks/yolov8_project
+notebooks/data.yaml
+dataset2/
 *.svg
 *.png
