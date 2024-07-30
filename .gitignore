@@ -165,8 +165,8 @@ cython_debug/
 problems/
 problems.zip
 Curvetopia.pdf
-dataset/*
-output/*
+dataset/
+output/
 
 *.svg
 *.png
