@@ -66,7 +66,7 @@ def save_annotation_file(file_path, class_id, bbox, img_width, img_height):
         x_center, y_center, width, height = bbox
         f.write(f'{class_id} {x_center} {y_center} {width} {height}\n')
 
-def generate_geometric_shapes_dataset(num_samples_per_class=50, output_directory='../dataset2'):
+def generate_geometric_shapes_dataset(num_samples_per_class=25, output_directory='../dataset3'):
     shape_categories = ['line', 'triangle', 'square', 'circle', 'ellipse', 'rectangle', 'star', 'regular_polygon']
     image_size = 224
     margin = 10

@@ -2,10 +2,10 @@ from ultralytics import YOLO
 import cv2
 
 # Load the model
-model = YOLO(r'C:\Users\Asim\OneDrive\Desktop\projects\curvetopia\model\content\yolov8_project\geometric_shapes2\weights\last.pt')  # or 'path/to/your/best.pt'
+model = YOLO(r'model/yolov8_project/geometric_shapes_cpu6/weights/best.pt')  # or 'path/to/your/best.pt'
 
 # Load an image
-img = cv2.imread(r'C:\Users\Asim\OneDrive\Desktop\projects\curvetopia\dataset2\star\star_1.png')
+img = cv2.imread(r'C:\Users\Asim\OneDrive\Desktop\projects\curvetopia\testData\image.png')
 
 # Run inference
 results = model(img)
