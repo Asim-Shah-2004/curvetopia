@@ -90,7 +90,7 @@ lr_scheduler = LearningRateScheduler(scheduler)
 
 # Train the model with augmentation and scheduler
 history = autoencoder.fit(datagen.flow(train_images, train_images, batch_size=128),
-                          epochs=20,
+                          epochs=100,
                           validation_data=(test_images, test_images),
                           callbacks=[checkpoint, lr_scheduler])
 

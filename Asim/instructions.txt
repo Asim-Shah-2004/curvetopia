@@ -1,3 +1,0 @@
-use genereteDataset.py dataset
-use model.py for model
-in useModel add image path and dataset path

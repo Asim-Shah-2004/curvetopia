@@ -165,5 +165,5 @@ def main(csv_path):
             plot_curve(hand_drawn_points, bezCurve)
 
 # Example usage
-csv_path = 'problems/frag0.csv'
+csv_path = '../problems/frag0.csv'
 main(csv_path)
