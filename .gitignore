@@ -175,3 +175,4 @@ dataset2/
 src/results/
 model/
 Asim/shapes_dataset/
+Asim/autoencoder_best_model.keras
