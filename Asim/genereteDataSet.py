@@ -113,7 +113,7 @@ def draw_smooth_shape(image, shape, properties):
     return image
 
 # Generate dataset
-def generate_dataset(output_dir, num_samples=10000):
+def generate_dataset(output_dir, num_samples=100):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     hand_drawn_dir = os.path.join(output_dir, 'hand_drawn')

@@ -7,7 +7,6 @@ from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, UpSampling2D, A
 from tensorflow.keras.models import Model
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
-from skimage import filters
 
 # Define the autoencoder model with residual connections
 def build_autoencoder(input_shape):
@@ -53,7 +52,7 @@ def scheduler(epoch, lr):
     if epoch < 10:
         return lr
     else:
-        return lr * tf.math.exp(-0.1)
+        return float(lr * tf.math.exp(-0.1))
 
 # Paths to dataset folders
 hand_drawn_path = r'C:\Users\Asim\OneDrive\Desktop\projects\curvetopia\Asim\shapes_dataset\hand_drawn'
@@ -91,7 +90,7 @@ lr_scheduler = LearningRateScheduler(scheduler)
 
 # Train the model with augmentation and scheduler
 history = autoencoder.fit(datagen.flow(train_images, train_images, batch_size=128),
-                          epochs=50,
+                          epochs=20,
                           validation_data=(test_images, test_images),
                           callbacks=[checkpoint, lr_scheduler])
 
