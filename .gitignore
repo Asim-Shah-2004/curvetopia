@@ -162,17 +162,26 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
+# Problem Statement
 problems/
 problems.zip
 Curvetopia.pdf
+
+# Data
 dataset/
 output/
-notebooks/yolov8_project
-notebooks/data.yaml
+models/
+
+# Yolo
+yolov8_project/
+yolov8_project.zip
+data.yaml
+
 dataset2/
-*.svg
-*.png
-src/results/
-model/
 Asim/shapes_dataset/
 Asim/autoencoder_best_model.keras
+
+*.svg
+*.png
+*.h5
+*.keras

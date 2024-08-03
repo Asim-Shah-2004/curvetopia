@@ -5,11 +5,27 @@ import os
 def rotate_image(image, rotation_angle):
     image_center = (image.shape[1] // 2, image.shape[0] // 2)
     rotation_matrix = cv2.getRotationMatrix2D(image_center, rotation_angle, 1.0)
-    rotated_image = cv2.warpAffine(image, rotation_matrix, (image.shape[1], image.shape[0]), flags=cv2.INTER_LINEAR)
+    
+    # Determine the size of the rotated image
+    cos_theta = np.abs(rotation_matrix[0, 0])
+    sin_theta = np.abs(rotation_matrix[0, 1])
+    new_width = int((image.shape[0] * sin_theta) + (image.shape[1] * cos_theta))
+    new_height = int((image.shape[0] * cos_theta) + (image.shape[1] * sin_theta))
+    
+    # Adjust the rotation matrix to account for the translation
+    rotation_matrix[0, 2] += (new_width / 2) - image_center[0]
+    rotation_matrix[1, 2] += (new_height / 2) - image_center[1]
+    
+    # Create a new white canvas
+    rotated_image = cv2.warpAffine(image, rotation_matrix, (new_width, new_height), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=(255, 255, 255))
+    
     return rotated_image
+
+
 
 def is_within_bounds(coords, width, height, margin=0):
     return all(0 + margin <= x < width - margin and 0 + margin <= y < height - margin for x, y in coords)
+
 
 def add_path_noise(points, noise_level=2):
     noisy_points = []
@@ -19,15 +35,17 @@ def add_path_noise(points, noise_level=2):
         noisy_points.append((int(noisy_x), int(noisy_y)))
     return noisy_points
 
+
 def draw_wobbly_line(img, pt1, pt2, color, thickness, noise_level):
-    num_points = 30  # Increased number of intermediate points for smoother lines
+    num_points = 30
     line_points = np.linspace(pt1, pt2, num_points)
     wobbly_line_points = add_path_noise(line_points, noise_level)
     for i in range(len(wobbly_line_points) - 1):
         cv2.line(img, tuple(wobbly_line_points[i]), tuple(wobbly_line_points[i + 1]), color, thickness)
 
+
 def draw_wobbly_circle(img, center, radius, color, thickness, noise_level):
-    num_points = 150  # Increased number of points for smoother circles
+    num_points = 150
     circle_points = []
     for i in range(num_points):
         angle = 2 * np.pi * i / num_points
@@ -37,8 +55,9 @@ def draw_wobbly_circle(img, center, radius, color, thickness, noise_level):
     wobbly_circle_points = add_path_noise(circle_points, noise_level)
     cv2.polylines(img, [np.array(wobbly_circle_points, np.int32)], isClosed=True, color=color, thickness=thickness)
 
+
 def draw_wobbly_ellipse(img, center, axes, angle, color, thickness, noise_level):
-    num_points = 150  # Increased number of points for smoother ellipses
+    num_points = 150
     ellipse_points = []
     for i in range(num_points):
         theta = 2 * np.pi * i / num_points
@@ -48,10 +67,11 @@ def draw_wobbly_ellipse(img, center, axes, angle, color, thickness, noise_level)
     wobbly_ellipse_points = add_path_noise(ellipse_points, noise_level)
     cv2.polylines(img, [np.array(wobbly_ellipse_points, np.int32)], isClosed=True, color=color, thickness=thickness)
 
-def generate_geometric_shapes_dataset(num_samples_per_class=250, output_directory='../dataset'):
-    shape_categories = ['line', 'triangle', 'square', 'circle', 'ellipse', 'rectangle', 'star', 'regular_polygon']
-    image_size = 256  # Increased resolution for better quality
-    margin = 20  # Increased margin to prevent clipping
+
+def generate_geometric_shapes_dataset(num_samples_per_class=3000, output_directory='../dataset'):
+    shape_categories = ['line', 'circle', 'ellipse', 'square', 'rectangle', 'polygon', 'star']
+    image_size = 224
+    margin = 20
 
     if not os.path.exists(output_directory):
         os.makedirs(output_directory)
@@ -63,27 +83,28 @@ def generate_geometric_shapes_dataset(num_samples_per_class=250, output_director
 
         for sample_idx in range(num_samples_per_class):
             while True:
-                image = np.zeros((image_size, image_size), dtype=np.uint8)
+                # Initialize image with white background
+                image = np.ones((image_size, image_size), dtype=np.uint8) * 255
                 coords = []
 
                 if shape == 'line':
                     x1, y1 = np.random.randint(0, image_size, size=2)
                     x2, y2 = np.random.randint(0, image_size, size=2)
                     coords = [(x1, y1), (x2, y2)]
-                    draw_wobbly_line(image, coords[0], coords[1], color=255, thickness=3, noise_level=6)
+                    draw_wobbly_line(image, coords[0], coords[1], color=0, thickness=3, noise_level=3)
 
                 elif shape == 'circle':
                     radius = np.random.randint(30, 80)
                     x, y = np.random.randint(radius, image_size-radius, size=2)
                     coords = [(x, y)]
-                    draw_wobbly_circle(image, coords[0], radius, color=255, thickness=3, noise_level=6)
+                    draw_wobbly_circle(image, coords[0], radius, color=0, thickness=3, noise_level=3)
 
                 elif shape == 'ellipse':
                     x, y = np.random.randint(30, image_size-30, size=2)
                     axes = np.random.randint(30, 100, size=2)
                     angle = np.random.randint(0, 180)
                     coords = [(x, y)]
-                    draw_wobbly_ellipse(image, coords[0], tuple(axes), angle, color=255, thickness=3, noise_level=6)
+                    draw_wobbly_ellipse(image, coords[0], tuple(axes), angle, color=0, thickness=3, noise_level=3)
 
                 elif shape == 'rectangle':
                     x1, y1 = np.random.randint(0, image_size-60, size=2)
@@ -91,10 +112,10 @@ def generate_geometric_shapes_dataset(num_samples_per_class=250, output_director
                     x2, y2 = x1 + width, y1 + height
                     coords = [(x1, y1), (x2, y2)]
                     if is_within_bounds(coords, image_size, image_size, margin):
-                        draw_wobbly_line(image, (x1, y1), (x2, y1), color=255, thickness=3, noise_level=6)
-                        draw_wobbly_line(image, (x2, y1), (x2, y2), color=255, thickness=3, noise_level=6)
-                        draw_wobbly_line(image, (x2, y2), (x1, y2), color=255, thickness=3, noise_level=6)
-                        draw_wobbly_line(image, (x1, y2), (x1, y1), color=255, thickness=3, noise_level=6)
+                        draw_wobbly_line(image, (x1, y1), (x2, y1), color=0, thickness=3, noise_level=3)
+                        draw_wobbly_line(image, (x2, y1), (x2, y2), color=0, thickness=3, noise_level=3)
+                        draw_wobbly_line(image, (x2, y2), (x1, y2), color=0, thickness=3, noise_level=3)
+                        draw_wobbly_line(image, (x1, y2), (x1, y1), color=0, thickness=3, noise_level=3)
                     else:
                         continue
 
@@ -104,15 +125,15 @@ def generate_geometric_shapes_dataset(num_samples_per_class=250, output_director
                     x2, y2 = x1 + side_length, y1 + side_length
                     coords = [(x1, y1), (x2, y2)]
                     if is_within_bounds(coords, image_size, image_size, margin):
-                        draw_wobbly_line(image, (x1, y1), (x2, y1), color=255, thickness=3, noise_level=6)
-                        draw_wobbly_line(image, (x2, y1), (x2, y2), color=255, thickness=3, noise_level=6)
-                        draw_wobbly_line(image, (x2, y2), (x1, y2), color=255, thickness=3, noise_level=6)
-                        draw_wobbly_line(image, (x1, y2), (x1, y1), color=255, thickness=3, noise_level=6)
+                        draw_wobbly_line(image, (x1, y1), (x2, y1), color=0, thickness=3, noise_level=3)
+                        draw_wobbly_line(image, (x2, y1), (x2, y2), color=0, thickness=3, noise_level=3)
+                        draw_wobbly_line(image, (x2, y2), (x1, y2), color=0, thickness=3, noise_level=3)
+                        draw_wobbly_line(image, (x1, y2), (x1, y1), color=0, thickness=3, noise_level=3)
                     else:
                         continue
 
-                elif shape == 'regular_polygon':
-                    num_sides = np.random.randint(5, 9)  # Increased range for more diverse shapes
+                elif shape == 'polygon':
+                    num_sides = np.random.randint(6, 9)
                     radius = np.random.randint(40, 80)
                     center = np.random.randint(radius, image_size-radius, size=2)
                     points = []
@@ -123,8 +144,8 @@ def generate_geometric_shapes_dataset(num_samples_per_class=250, output_director
                         points.append((x, y))
                     coords = points
                     if is_within_bounds(coords, image_size, image_size, margin):
-                        noisy_points = add_path_noise(coords, noise_level=6)
-                        cv2.polylines(image, [np.array(noisy_points)], isClosed=True, color=255, thickness=3)
+                        noisy_points = add_path_noise(coords, noise_level=3)
+                        cv2.polylines(image, [np.array(noisy_points)], isClosed=True, color=0, thickness=3)
                     else:
                         continue
 
@@ -142,8 +163,8 @@ def generate_geometric_shapes_dataset(num_samples_per_class=250, output_director
                         points.append((x, y))
                     coords = points
                     if is_within_bounds(coords, image_size, image_size, margin):
-                        noisy_points = add_path_noise(coords, noise_level=6)
-                        cv2.polylines(image, [np.array(noisy_points)], isClosed=True, color=255, thickness=3)
+                        noisy_points = add_path_noise(coords, noise_level=3)
+                        cv2.polylines(image, [np.array(noisy_points)], isClosed=True, color=0, thickness=3)
                     else:
                         continue
 
@@ -158,8 +179,8 @@ def generate_geometric_shapes_dataset(num_samples_per_class=250, output_director
                         ])) == 0):
                             break
                     if is_within_bounds(coords, image_size, image_size, margin):
-                        noisy_points = add_path_noise(coords, noise_level=6)
-                        cv2.polylines(image, [np.array(noisy_points)], isClosed=True, color=255, thickness=3)
+                        noisy_points = add_path_noise(coords, noise_level=3)
+                        cv2.polylines(image, [np.array(noisy_points)], isClosed=True, color=0, thickness=3)
                     else:
                         continue
 
@@ -169,5 +190,6 @@ def generate_geometric_shapes_dataset(num_samples_per_class=250, output_director
                 file_path = os.path.join(shape_directory, f'{shape}_{sample_idx}.png')
                 cv2.imwrite(file_path, image)
                 break
+
 
 generate_geometric_shapes_dataset()
