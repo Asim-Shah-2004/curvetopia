@@ -169,18 +169,19 @@ Curvetopia.pdf
 
 # Data
 dataset/
-output/
+dataset2/
+dataset3/
+shapes_dataset/
+temp_dataset/
 models/
+temp/
 
 # Yolo
 yolov8_project/
 yolov8_project.zip
 data.yaml
 
-dataset2/
-Asim/shapes_dataset/
-Asim/autoencoder_best_model.keras
-
+# Models
 *.svg
 *.png
 *.h5
