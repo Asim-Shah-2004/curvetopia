@@ -8,6 +8,7 @@ from typing import List, Tuple
 from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing import image
 from PIL import Image
+from scipy.spatial import ConvexHull
 
 # Shape labels
 shape_labels = {
@@ -241,6 +242,120 @@ def polylines2svg(XY: np.ndarray, svg_path: str, colour: str = 'blue', stroke_wi
     return svg_path, png_path
 
 
+def regularize_line(curve):
+    """
+    Regularizes a line shape to be closed.
+    """
+    if len(curve) < 2:
+        return curve
+    return np.array([curve[0], curve[-1], curve[0]])  # Adding the starting point to close the line
+
+
+def regularize_circle_or_ellipse(curve, shape_type):
+    """
+    Regularizes circle or ellipse shapes to be closed.
+    """
+    if len(curve) < 5:
+        return np.vstack((curve, curve[0]))  # Not enough points to fit ellipse, close it as is
+
+    # Extract coordinates
+    points = curve[:, :2].astype(np.float32)
+
+    # Fit an ellipse
+    ellipse = cv2.fitEllipse(points)
+    center, axes, angle = ellipse
+
+    if shape_type == "circle":
+        radius = (axes[0] + axes[1]) / 4
+        t = np.linspace(0, 2 * np.pi, 100)
+        x = center[0] + radius * np.cos(t)
+        y = center[1] + radius * np.sin(t)
+    else:
+        a, b = axes[0] / 2, axes[1] / 2
+        t = np.linspace(0, 2 * np.pi, 100)
+        x = center[0] + a * np.cos(t) * np.cos(np.radians(angle)) - b * np.sin(t) * np.sin(np.radians(angle))
+        y = center[1] + a * np.cos(t) * np.sin(np.radians(angle)) + b * np.sin(t) * np.cos(np.radians(angle))
+
+    # Close the shape by adding the starting point
+    x = np.append(x, x[0])
+    y = np.append(y, y[0])
+
+    return np.vstack((x, y)).T
+
+
+def regularize_rectangle_or_rounded_rectangle(curve, shape_type):
+    """
+    Regularizes rectangle or rounded rectangle shapes to be closed.
+    """
+    if len(curve) < 4:
+        return np.vstack((curve, curve[0]))  # Not enough points to fit rectangle, close it as is
+
+    # Extract coordinates
+    points = curve[:, :2].astype(np.float32)
+
+    rect = cv2.minAreaRect(points)
+    box = cv2.boxPoints(rect)
+    box = np.int32(box)
+
+    if shape_type == "rectangle":
+        return np.vstack((box, box[0]))  # Adding the starting point to close the rectangle
+    elif shape_type == "rounded_rectangle":
+        # Example: Approximate rounded corners (dummy implementation)
+        return np.vstack((box, box[0]))  # Just to illustrate; refine this as needed
+
+    return np.vstack((box, box[0]))  # Ensure the shape is closed
+
+
+def regularize_star(curve: np.ndarray, num_points: int = 5) -> np.ndarray:
+    if len(curve) < 5:
+        # Not enough points to form a star, return the original shape with closure
+        return np.vstack((curve, curve[0]))
+
+    # Extract coordinates
+    points = curve[:, :2]
+
+    # Calculate the centroid of the points
+    center = np.mean(points, axis=0)
+
+    # Calculate distances and angles from the center to each point
+    distances = np.linalg.norm(points - center, axis=1)
+    angles = np.arctan2(points[:, 1] - center[1], points[:, 0] - center[0])
+
+    # Sort angles and corresponding distances
+    sorted_indices = np.argsort(angles)
+    sorted_angles = angles[sorted_indices]
+    sorted_distances = distances[sorted_indices]
+
+    # Generate the star shape
+    star_angles = np.linspace(0, 2 * np.pi, num_points * 2, endpoint=False)
+    star_radii = np.zeros(num_points * 2)
+    
+    # Alternating radius for star points and inner points
+    outer_radius = np.max(sorted_distances)
+    inner_radius = np.min(sorted_distances)
+    star_radii[::2] = outer_radius  # Outer points
+    star_radii[1::2] = inner_radius  # Inner points
+
+    # Interpolate the original shape onto the star shape
+    interp_distances = np.interp(star_angles, sorted_angles, sorted_distances, period=2*np.pi)
+    
+    # Blend the original shape with the ideal star shape
+    blend_factor = 0.5  # Adjust this value to control how much of the original shape is preserved
+    blended_radii = blend_factor * interp_distances + (1 - blend_factor) * star_radii
+
+    # Generate x and y coordinates
+    x = center[0] + blended_radii * np.cos(star_angles)
+    y = center[1] + blended_radii * np.sin(star_angles)
+
+    # Create the star shape
+    star_shape = np.column_stack((x, y))
+
+    # Close the shape by adding the first point at the end
+    closed_star_shape = np.vstack((star_shape, star_shape[0]))
+
+    # Return the closed star shape
+    return closed_star_shape
+
 def classify_and_plot(path_XYs: List[List[np.ndarray]]) -> None:
     colours = ['blue', 'red', 'green', 'yellow', 'cyan', 'magenta', 'orange', 'gray']
 
@@ -249,10 +364,26 @@ def classify_and_plot(path_XYs: List[List[np.ndarray]]) -> None:
         c = colours[i % len(colours)]
         for j, XY in enumerate(XYs):
             XY = np.array(XY)
+
             svg_path, png_path = polylines2svg(XY, f"{temp_dir}/curve_{i}_{j}.svg", colour='blue')
             shape, label = detect_predominant_shape(f"{temp_dir}/curve_{i}_{j}.png")
             print(f"Predominant Shape: {shape}, Label: {label}")
-            # ax.plot(XY[:, 0], XY[:, 1], c=c, linewidth=2)
+
+            # Regularize shape based on detected shape
+            if shape == 'line':
+                regularized_XY = regularize_line(XY)
+            elif shape in ['circle', 'ellipse']:
+                regularized_XY = regularize_circle_or_ellipse(XY, shape)
+            elif shape in ['rectangle', 'rounded_rectangle']:
+                regularized_XY = regularize_rectangle_or_rounded_rectangle(XY, shape)
+            elif shape == 'star':
+                regularized_XY = regularize_star(XY)
+            else:
+                regularized_XY = XY  # No regularization for unknown shapes
+
+            # Plotting the regularized shape
+            ax.plot(XY[:, 0], XY[:, 1], c=c, linewidth=2)
+            ax.plot(regularized_XY[:, 0], regularized_XY[:, 1], c=c, linewidth=2)
 
     ax.set_aspect('equal')
     plt.show()
