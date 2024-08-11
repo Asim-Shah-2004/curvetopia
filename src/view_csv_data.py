@@ -116,5 +116,5 @@ def classify_and_plot(path_XYs: List[List[np.ndarray]]) -> None:
 
 
 # Example usage
-path_XYs = read_csv('../problems/frag0.csv')
+path_XYs = read_csv('../problems/regularized_shapes.csv')
 classify_and_plot(path_XYs)

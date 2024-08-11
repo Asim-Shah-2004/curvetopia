@@ -242,126 +242,185 @@ def polylines2svg(XY: np.ndarray, svg_path: str, colour: str = 'blue', stroke_wi
     return svg_path, png_path
 
 
-def regularize_line(curve):
+def regularize_shape(curve: np.ndarray, shape_type: str) -> np.ndarray:
     """
-    Regularizes a line shape to be closed.
+    Regularizes a shape based on its type.
+
+    Args:
+        curve (np.ndarray): The input curve points.
+        shape_type (str): The type of shape to regularize.
+
+    Returns:
+        np.ndarray: The regularized shape points.
     """
+    regularization_functions = {
+        "line": regularize_line,
+        "circle": lambda c: regularize_ellipse(c, is_circle=True),
+        "ellipse": lambda c: regularize_ellipse(c, is_circle=False),
+        "rectangle": lambda c: regularize_rectangle(c, rounded=False),
+        "rounded_rectangle": lambda c: regularize_rectangle(c, rounded=True),
+        "star": regularize_star
+    }
+
+    regularize_func = regularization_functions.get(shape_type.lower())
+    if regularize_func is None:
+        print(f"Unsupported shape type: {shape_type}")
+        return curve
+
+    return regularize_func(curve)
+
+
+def regularize_line(curve: np.ndarray) -> np.ndarray:
+    """Regularizes a line shape to be closed."""
     if len(curve) < 2:
         return curve
-    return np.array([curve[0], curve[-1], curve[0]])  # Adding the starting point to close the line
+    return np.vstack((curve[0], curve[-1], curve[0]))
 
 
-def regularize_circle_or_ellipse(curve, shape_type):
+def regularize_ellipse(curve: np.ndarray, is_circle: bool = False) -> np.ndarray:
     """
     Regularizes circle or ellipse shapes to be closed.
+
+    Args:
+        curve (np.ndarray): The input curve points.
+        is_circle (bool): Whether to treat the shape as a circle.
+
+    Returns:
+        np.ndarray: The regularized shape points.
     """
     if len(curve) < 5:
-        return np.vstack((curve, curve[0]))  # Not enough points to fit ellipse, close it as is
+        return np.vstack((curve, curve[0]))
 
-    # Extract coordinates
     points = curve[:, :2].astype(np.float32)
-
-    # Fit an ellipse
     ellipse = cv2.fitEllipse(points)
     center, axes, angle = ellipse
 
-    if shape_type == "circle":
-        radius = (axes[0] + axes[1]) / 4
+    if is_circle:
+        radius = np.mean(axes) / 2
         t = np.linspace(0, 2 * np.pi, 100)
         x = center[0] + radius * np.cos(t)
         y = center[1] + radius * np.sin(t)
     else:
         a, b = axes[0] / 2, axes[1] / 2
         t = np.linspace(0, 2 * np.pi, 100)
-        x = center[0] + a * np.cos(t) * np.cos(np.radians(angle)) - b * np.sin(t) * np.sin(np.radians(angle))
-        y = center[1] + a * np.cos(t) * np.sin(np.radians(angle)) + b * np.sin(t) * np.cos(np.radians(angle))
+        angle_rad = np.radians(angle)
+        x = center[0] + a * np.cos(t) * np.cos(angle_rad) - b * np.sin(t) * np.sin(angle_rad)
+        y = center[1] + a * np.cos(t) * np.sin(angle_rad) + b * np.sin(t) * np.cos(angle_rad)
 
-    # Close the shape by adding the starting point
-    x = np.append(x, x[0])
-    y = np.append(y, y[0])
-
-    return np.vstack((x, y)).T
+    return np.column_stack((np.append(x, x[0]), np.append(y, y[0])))
 
 
-def regularize_rectangle_or_rounded_rectangle(curve, shape_type):
+def regularize_rectangle(curve: np.ndarray, rounded: bool = False) -> np.ndarray:
     """
     Regularizes rectangle or rounded rectangle shapes to be closed.
+
+    Args:
+        curve (np.ndarray): The input curve points.
+        rounded (bool): Whether to create a rounded rectangle.
+
+    Returns:
+        np.ndarray: The regularized shape points.
     """
     if len(curve) < 4:
-        return np.vstack((curve, curve[0]))  # Not enough points to fit rectangle, close it as is
+        return np.vstack((curve, curve[0]))
 
-    # Extract coordinates
     points = curve[:, :2].astype(np.float32)
-
     rect = cv2.minAreaRect(points)
     box = cv2.boxPoints(rect)
-    box = np.int32(box)
 
-    if shape_type == "rectangle":
-        return np.vstack((box, box[0]))  # Adding the starting point to close the rectangle
-    elif shape_type == "rounded_rectangle":
-        # Example: Approximate rounded corners (dummy implementation)
-        return np.vstack((box, box[0]))  # Just to illustrate; refine this as needed
+    if not rounded:
+        return np.vstack((box, box[0]))
 
-    return np.vstack((box, box[0]))  # Ensure the shape is closed
+    # Implement rounded corners
+    corner_radius = min(rect[1]) * 0.1  # 10% of the smaller side as corner radius
+    return create_rounded_rectangle(box, corner_radius)
+
+
+def create_rounded_rectangle(rect: np.ndarray, radius: float) -> np.ndarray:
+    """Creates a rounded rectangle from a given rectangle and corner radius."""
+    corners = [rect[i] for i in range(4)]
+    rounded_rect = []
+
+    for i in range(4):
+        p1 = corners[i]
+        p2 = corners[(i + 1) % 4]
+
+        # Calculate the direction vector
+        dir_vec = p2 - p1
+        dir_vec_norm = dir_vec / np.linalg.norm(dir_vec)
+
+        # Calculate start and end points of the rounded corner
+        start = p1 + dir_vec_norm * radius
+        end = p2 - dir_vec_norm * radius
+
+        # Add the straight line
+        rounded_rect.extend([start, end])
+
+        # Add the rounded corner
+        center = p2 - dir_vec_norm * radius
+        next_dir = corners[(i + 2) % 4] - p2
+        next_dir_norm = next_dir / np.linalg.norm(next_dir)
+        angle_start = np.arctan2(dir_vec_norm[1], dir_vec_norm[0])
+        angle_end = np.arctan2(next_dir_norm[1], next_dir_norm[0])
+
+        if angle_end < angle_start:
+            angle_end += 2 * np.pi
+
+        angles = np.linspace(angle_start, angle_end, 10)
+        for angle in angles:
+            x = center[0] + radius * np.cos(angle)
+            y = center[1] + radius * np.sin(angle)
+            rounded_rect.append([x, y])
+
+    return np.array(rounded_rect)
 
 
 def regularize_star(curve: np.ndarray, num_points: int = 5) -> np.ndarray:
+    """
+    Regularizes a star shape.
+
+    Args:
+        curve (np.ndarray): The input curve points.
+        num_points (int): The number of points in the star.
+
+    Returns:
+        np.ndarray: The regularized star shape points.
+    """
     if len(curve) < 5:
-        # Not enough points to form a star, return the original shape with closure
         return np.vstack((curve, curve[0]))
 
-    # Extract coordinates
     points = curve[:, :2]
-
-    # Calculate the centroid of the points
     center = np.mean(points, axis=0)
-
-    # Calculate distances and angles from the center to each point
     distances = np.linalg.norm(points - center, axis=1)
     angles = np.arctan2(points[:, 1] - center[1], points[:, 0] - center[0])
 
-    # Sort angles and corresponding distances
     sorted_indices = np.argsort(angles)
     sorted_angles = angles[sorted_indices]
     sorted_distances = distances[sorted_indices]
 
-    # Generate the star shape
     star_angles = np.linspace(0, 2 * np.pi, num_points * 2, endpoint=False)
-    star_radii = np.zeros(num_points * 2)
-    
-    # Alternating radius for star points and inner points
     outer_radius = np.max(sorted_distances)
     inner_radius = np.min(sorted_distances)
-    star_radii[::2] = outer_radius  # Outer points
-    star_radii[1::2] = inner_radius  # Inner points
+    star_radii = np.tile([outer_radius, inner_radius], num_points)
 
-    # Interpolate the original shape onto the star shape
     interp_distances = np.interp(star_angles, sorted_angles, sorted_distances, period=2*np.pi)
-    
-    # Blend the original shape with the ideal star shape
-    blend_factor = 0.5  # Adjust this value to control how much of the original shape is preserved
+    blend_factor = 0.5
     blended_radii = blend_factor * interp_distances + (1 - blend_factor) * star_radii
 
-    # Generate x and y coordinates
     x = center[0] + blended_radii * np.cos(star_angles)
     y = center[1] + blended_radii * np.sin(star_angles)
 
-    # Create the star shape
-    star_shape = np.column_stack((x, y))
+    return np.column_stack((np.append(x, x[0]), np.append(y, y[0])))
 
-    # Close the shape by adding the first point at the end
-    closed_star_shape = np.vstack((star_shape, star_shape[0]))
-
-    # Return the closed star shape
-    return closed_star_shape
 
 def classify_and_plot(path_XYs: List[List[np.ndarray]]) -> None:
     colours = ['blue', 'red', 'green', 'yellow', 'cyan', 'magenta', 'orange', 'gray']
 
     fig, ax = plt.subplots(tight_layout=True, figsize=(8, 8))
+    regularized_path_XYs = []
     for i, XYs in enumerate(path_XYs):
         c = colours[i % len(colours)]
+        regularized_XYs = []
         for j, XY in enumerate(XYs):
             XY = np.array(XY)
 
@@ -369,27 +428,36 @@ def classify_and_plot(path_XYs: List[List[np.ndarray]]) -> None:
             shape, label = detect_predominant_shape(f"{temp_dir}/curve_{i}_{j}.png")
             print(f"Predominant Shape: {shape}, Label: {label}")
 
-            # Regularize shape based on detected shape
-            if shape == 'line':
-                regularized_XY = regularize_line(XY)
-            elif shape in ['circle', 'ellipse']:
-                regularized_XY = regularize_circle_or_ellipse(XY, shape)
-            elif shape in ['rectangle', 'rounded_rectangle']:
-                regularized_XY = regularize_rectangle_or_rounded_rectangle(XY, shape)
-            elif shape == 'star':
-                regularized_XY = regularize_star(XY)
-            else:
-                regularized_XY = XY  # No regularization for unknown shapes
+            regularized_XY = regularize_shape(XY, shape)
+            regularized_XYs.append(regularized_XY)
 
             # Plotting the regularized shape
             ax.plot(XY[:, 0], XY[:, 1], c=c, linewidth=2)
             ax.plot(regularized_XY[:, 0], regularized_XY[:, 1], c=c, linewidth=2)
+        
+        regularized_path_XYs.append(regularized_XYs)
 
     ax.set_aspect('equal')
     plt.show()
+    save_to_csv(regularized_path_XYs, output_csv_path)
+
+def save_to_csv(path_XYs: List[List[np.ndarray]], output_csv_path: str) -> None:
+    """
+    Saves the path_XYs data to a CSV file.
+
+    Args:
+        path_XYs (List[List[np.ndarray]]): The path XY data to save.
+        output_csv_path (str): The path to the output CSV file.
+    """
+    with open(output_csv_path, 'w') as file:
+        for i, XYs in enumerate(path_XYs):
+            for j, XY in enumerate(XYs):
+                for point in XY:
+                    file.write(f"{i},{j},{point[0]},{point[1]}\n")
 
 
 # Example usage
 csv_path = '../problems/isolated.csv'
+output_csv_path = '../problems/regularized_shapes.csv'
 path_XYs = read_csv(csv_path)
 classify_and_plot(path_XYs)
